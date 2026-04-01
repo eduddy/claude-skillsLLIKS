@@ -36,7 +36,8 @@
         "./artifacts-builder",
         "./slack-gif-creator",
         "./theme-factory",
-        "./brand-guidelines"
+        "./brand-guidelines",
+        "./ai-prompt-manager"
       ]
     }
   ]
