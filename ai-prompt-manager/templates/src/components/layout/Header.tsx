@@ -1,4 +1,4 @@
-import { ArrowUpDown, LayoutGrid, List, Menu, Moon, Search, Settings, Sun } from 'lucide-react';
+import { ArrowUpDown, LayoutGrid, List, Menu, Moon, Search, Settings, Sun, Wand2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Button } from '../ui/button';
@@ -76,6 +76,28 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1">
+        {/* Prompt Builder */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden gap-1.5 sm:flex text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
+          onClick={() => dispatch({ type: 'OPEN_BUILDER' })}
+          title="Open Prompt Builder"
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          <span className="text-xs font-medium">Builder</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-indigo-600 hover:bg-indigo-50 sm:hidden dark:text-indigo-400 dark:hover:bg-indigo-950"
+          onClick={() => dispatch({ type: 'OPEN_BUILDER' })}
+          title="Open Prompt Builder"
+          aria-label="Prompt Builder"
+        >
+          <Wand2 className="h-4 w-4" />
+        </Button>
+
         {/* Sort */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

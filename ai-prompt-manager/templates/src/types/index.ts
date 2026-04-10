@@ -56,6 +56,7 @@ export interface UIState {
   isSidebarOpen: boolean;
   isSettingsOpen: boolean;
   isCategoryManagerOpen: boolean;
+  isBuilderOpen: boolean;
 }
 
 export interface AppState {
@@ -97,6 +98,8 @@ export type AppAction =
   | { type: 'CLOSE_SETTINGS' }
   | { type: 'OPEN_CATEGORY_MANAGER' }
   | { type: 'CLOSE_CATEGORY_MANAGER' }
+  | { type: 'OPEN_BUILDER' }
+  | { type: 'CLOSE_BUILDER' }
   | { type: 'IMPORT_DATA'; payload: { prompts: Prompt[]; categories: Category[]; aiServices: AIService[] } };
 
 export interface ExportData {
@@ -105,4 +108,35 @@ export interface ExportData {
   prompts: Prompt[];
   categories: Category[];
   aiServices: AIService[];
+}
+
+// ─── Prompt Builder ───────────────────────────────────────────────────────────
+
+export type SegmentType =
+  | 'role'            // "You are a..."
+  | 'task'            // "Your task is to..."
+  | 'context'         // Background or scope information
+  | 'input'           // Description of what the user will provide
+  | 'constraints'     // Rules, limits, do-not-do instructions
+  | 'format'          // Output structure / length / style
+  | 'tone'            // Voice, register, persona
+  | 'examples'        // Few-shot demonstrations
+  | 'chain_of_thought'// "Think step by step…"
+  | 'refinement';     // Query-sharpening / search-quality modifiers
+
+export interface PromptSegment {
+  id: string;
+  type: SegmentType;
+  content: string;
+  enabled: boolean;
+}
+
+export interface BuilderState {
+  isOpen: boolean;
+  topic: string;
+  isGenerating: boolean;
+  segments: PromptSegment[];
+  saveTitle: string;
+  saveCategoryId: string;
+  saveServiceId: string;
 }

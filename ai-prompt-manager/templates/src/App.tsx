@@ -7,6 +7,7 @@ import { PromptDetail } from './components/prompts/PromptDetail';
 import { CategoryManager } from './components/categories/CategoryManager';
 import { SettingsPanel } from './components/settings/SettingsPanel';
 import { MobileSidebarOverlay } from './components/layout/MobileSidebarOverlay';
+import { PromptBuilder } from './components/builder/PromptBuilder';
 
 export function App() {
   return (
@@ -41,6 +42,7 @@ function AppShell() {
       <PromptDetail />
       <CategoryManager />
       <SettingsPanel />
+      <PromptBuilder />
     </div>
   );
 }

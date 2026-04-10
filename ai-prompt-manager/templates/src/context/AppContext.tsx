@@ -120,6 +120,7 @@ function buildInitialState(): AppState {
     isSidebarOpen: false,
     isSettingsOpen: false,
     isCategoryManagerOpen: false,
+    isBuilderOpen: false,
   };
 
   return { prompts, categories, aiServices, settings, ui };
@@ -298,6 +299,12 @@ function reducer(state: AppState, action: AppAction): AppState {
 
     case 'CLOSE_CATEGORY_MANAGER':
       return { ...state, ui: { ...state.ui, isCategoryManagerOpen: false } };
+
+    case 'OPEN_BUILDER':
+      return { ...state, ui: { ...state.ui, isBuilderOpen: true } };
+
+    case 'CLOSE_BUILDER':
+      return { ...state, ui: { ...state.ui, isBuilderOpen: false } };
 
     case 'IMPORT_DATA': {
       const { prompts, categories, aiServices } = action.payload;
