@@ -15,10 +15,7 @@ import {
   blankSegment,
   generateSegments,
 } from '../../lib/segments';
-import {
-  scoreCompleteness,
-  suggestNextType,
-} from '../../lib/phrase-library';
+import { CompletenessPanel } from './CompletenessPanel';
 import { copyToClipboard } from '../../lib/utils';
 import type { PromptSegment, SegmentType } from '../../types';
 import { Badge } from '../ui/badge';
@@ -63,42 +60,6 @@ function detectCategory(topic: string): string {
   return best;
 }
 
-// ─── Completeness meter ────────────────────────────────────────────────────────
-
-function CompletionMeter({ segments }: { segments: PromptSegment[] }) {
-  const enabledTypes = new Set(
-    segments.filter((s) => s.enabled).map((s) => s.type),
-  );
-  const { score, tips } = scoreCompleteness(enabledTypes);
-
-  const color =
-    score >= 80 ? 'bg-green-500'
-    : score >= 50 ? 'bg-amber-400'
-    : 'bg-red-400';
-
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-[11px]">
-        <span className="font-medium text-slate-600 dark:text-slate-300">
-          Prompt completeness
-        </span>
-        <span className={cn('font-semibold', score >= 80 ? 'text-green-600' : score >= 50 ? 'text-amber-600' : 'text-red-500')}>
-          {score}%
-        </span>
-      </div>
-      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
-        <div
-          className={cn('h-1.5 rounded-full transition-all duration-500', color)}
-          style={{ width: `${score}%` }}
-        />
-      </div>
-      {tips.length > 0 && score < 80 && (
-        <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">{tips[0]}</p>
-      )}
-    </div>
-  );
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function PromptBuilder() {
@@ -123,7 +84,6 @@ export function PromptBuilder() {
   const category = detectCategory(topic);
   const enabledCount = segments.filter((s) => s.enabled).length;
   const existingTypes = new Set(segments.map((s) => s.type));
-  const nextSuggestion = suggestNextType(existingTypes);
 
   // Reset on close
   useEffect(() => {
@@ -315,7 +275,12 @@ export function PromptBuilder() {
                 {/* Completeness + type filter */}
                 {segments.length > 0 && (
                   <>
-                    <CompletionMeter segments={segments} />
+                    <CompletenessPanel
+                      segments={segments}
+                      category={category}
+                      topic={topic}
+                      onAddSegment={addSegment}
+                    />
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
                       <FilterChip
                         label={`All (${segments.length})`}
@@ -375,21 +340,6 @@ export function PromptBuilder() {
                         onRegenerate={regenerateSegment}
                       />
                     ))}
-
-                    {/* Next-segment suggestion */}
-                    {nextSuggestion && (
-                      <button
-                        onClick={() => addSegment(blankSegment(nextSuggestion, topic))}
-                        className="flex w-full items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-400 hover:border-indigo-400 hover:text-indigo-600 transition-colors dark:border-slate-700 dark:hover:border-indigo-600"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Suggested next: add a{' '}
-                        <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase', SEGMENT_META[nextSuggestion].badgeClass)}>
-                          {SEGMENT_META[nextSuggestion].label}
-                        </span>{' '}
-                        segment
-                      </button>
-                    )}
 
                     <AddSegmentPicker
                       existingTypes={existingTypes as Set<SegmentType>}

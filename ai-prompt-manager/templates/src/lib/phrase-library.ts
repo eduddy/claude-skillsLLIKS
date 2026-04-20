@@ -410,70 +410,175 @@ export function getAlternatives(
 
 // ─── Completeness Assessment ───────────────────────────────────────────────────
 
-interface CompletenessResult {
-  score: number; // 0–100
-  missing: SegmentType[];
-  tips: string[];
+export type CompletenessStage = 'starter' | 'functional' | 'polished' | 'expert';
+export type ImpactLevel = 'critical' | 'high' | 'medium' | 'low';
+
+export interface ChecklistItem {
+  type: SegmentType;
+  state: 'enabled' | 'disabled' | 'missing';
+  impact: ImpactLevel;
+  why: string;
+  weight: number;
 }
 
-const CORE_TYPES: SegmentType[] = ['role', 'task', 'format'];
-const RECOMMENDED_TYPES: SegmentType[] = ['context', 'constraints'];
-
-export function scoreCompleteness(
-  enabledTypes: Set<SegmentType>,
-): CompletenessResult {
-  const missing: SegmentType[] = [];
-  const tips: string[] = [];
-  let score = 0;
-
-  for (const t of CORE_TYPES) {
-    if (enabledTypes.has(t)) score += 25;
-    else {
-      missing.push(t);
-      tips.push(`Add a "${t}" segment — it's essential for reliable output.`);
-    }
-  }
-
-  for (const t of RECOMMENDED_TYPES) {
-    if (enabledTypes.has(t)) score += 8;
-    else missing.push(t);
-  }
-
-  if (enabledTypes.has('examples')) score += 6;
-  if (enabledTypes.has('chain_of_thought')) score += 4;
-  if (enabledTypes.has('refinement')) score += 4;
-  if (enabledTypes.has('tone')) score += 3;
-
-  if (!enabledTypes.has('examples') && enabledTypes.size >= 3) {
-    tips.push('Adding an "examples" segment typically improves output consistency by 30–50%.');
-  }
-  if (!enabledTypes.has('chain_of_thought') && enabledTypes.has('task')) {
-    tips.push('"Reasoning" (chain-of-thought) reduces errors on complex or multi-step tasks.');
-  }
-
-  return { score: Math.min(score, 100), missing, tips };
+export interface CompletenessReport {
+  score: number;
+  stage: CompletenessStage;
+  stageLabel: string;
+  checklist: ChecklistItem[];
+  nextSteps: ChecklistItem[];
+  stageTip: string;
 }
 
-// ─── Next segment suggestion ───────────────────────────────────────────────────
+interface SegmentWeight {
+  weight: number;
+  impact: ImpactLevel;
+  why: string;
+}
 
-const NATURAL_NEXT: Partial<Record<SegmentType, SegmentType>> = {
-  role: 'task',
-  task: 'context',
-  context: 'constraints',
-  constraints: 'format',
-  format: 'examples',
-  input: 'constraints',
-  examples: 'chain_of_thought',
+const CATEGORY_SEGMENT_WEIGHTS: Record<string, Partial<Record<SegmentType, SegmentWeight>>> = {
+  coding: {
+    role:             { weight: 18, impact: 'critical', why: 'Defining an expert role (senior engineer, architect) sharpens code quality and naming conventions.' },
+    task:             { weight: 22, impact: 'critical', why: 'A precise task statement prevents the AI from solving the wrong problem.' },
+    context:          { weight: 15, impact: 'high',     why: 'Language, framework, and codebase context determines which patterns and idioms to use.' },
+    constraints:      { weight: 12, impact: 'high',     why: 'Constraints (no external deps, target environment) prevent unusable output.' },
+    format:           { weight: 10, impact: 'high',     why: 'Specifying code blocks, comments, and file structure saves heavy reformatting.' },
+    examples:         { weight: 10, impact: 'high',     why: 'Input/output examples cut ambiguity and anchor the expected coding style.' },
+    chain_of_thought: { weight: 8,  impact: 'medium',   why: 'Step-by-step reasoning surfaces algorithmic trade-offs before code is written.' },
+    input:            { weight: 3,  impact: 'low',      why: 'Providing a concrete code snippet or spec as input grounds the response.' },
+    tone:             { weight: 2,  impact: 'low',      why: 'A professional/concise tone keeps explanations tight.' },
+  },
+  writing: {
+    role:             { weight: 15, impact: 'high',     why: 'A clear author persona (journalist, copywriter) sets the voice and authority.' },
+    task:             { weight: 20, impact: 'critical', why: 'A sharp task statement defines deliverable, audience, and purpose.' },
+    context:          { weight: 12, impact: 'high',     why: 'Background on audience, publication, and goal shapes every word choice.' },
+    tone:             { weight: 15, impact: 'critical', why: 'Tone is the single biggest differentiator between good and great writing.' },
+    format:           { weight: 12, impact: 'high',     why: 'Specifying structure (headings, bullet length, word count) prevents rewrites.' },
+    constraints:      { weight: 10, impact: 'high',     why: 'Constraints (style guide, brand voice, forbidden phrases) keep copy on-brand.' },
+    examples:         { weight: 10, impact: 'medium',   why: 'Style samples show the AI the quality bar better than any description.' },
+    input:            { weight: 4,  impact: 'low',      why: 'Providing a brief or outline anchors the draft.' },
+    chain_of_thought: { weight: 2,  impact: 'low',      why: 'Useful for structured pieces like essays that need explicit argument flow.' },
+  },
+  analysis: {
+    role:             { weight: 12, impact: 'high',     why: 'An analyst/researcher role primes more rigorous, evidence-based responses.' },
+    task:             { weight: 22, impact: 'critical', why: 'A precise analytical question prevents surface-level summaries.' },
+    context:          { weight: 18, impact: 'critical', why: 'Data source, domain, and prior work context is everything for accurate analysis.' },
+    constraints:      { weight: 15, impact: 'high',     why: 'Scope limits (time range, geography, metrics) keep analysis focused.' },
+    format:           { weight: 12, impact: 'high',     why: 'Structured output (tables, bullets, sections) makes findings actionable.' },
+    chain_of_thought: { weight: 12, impact: 'high',     why: 'Explicit reasoning chains expose analytical assumptions for review.' },
+    examples:         { weight: 5,  impact: 'medium',   why: 'Sample outputs align expectations for depth and format.' },
+    input:            { weight: 4,  impact: 'low',      why: 'Pasting the actual data or document to analyze sharpens specificity.' },
+  },
+  creative: {
+    role:             { weight: 10, impact: 'medium',   why: 'A creative persona (novelist, screenwriter) unlocks genre-specific conventions.' },
+    task:             { weight: 20, impact: 'critical', why: 'A clear creative brief prevents generic output.' },
+    context:          { weight: 12, impact: 'high',     why: 'Setting, characters, and genre context shapes every creative decision.' },
+    tone:             { weight: 18, impact: 'critical', why: 'Voice and mood define the reader experience — they cannot be fixed in post.' },
+    examples:         { weight: 15, impact: 'high',     why: 'Showing a passage or style reference is worth a thousand adjectives.' },
+    constraints:      { weight: 10, impact: 'medium',   why: 'Creative constraints (word count, POV, forbidden tropes) spark better ideas.' },
+    format:           { weight: 8,  impact: 'medium',   why: 'Format guidance (dialogue ratio, scene breaks) sets pacing expectations.' },
+    refinement:       { weight: 5,  impact: 'medium',   why: 'Refinement instructions let the AI self-edit toward your target quality.' },
+    chain_of_thought: { weight: 2,  impact: 'low',      why: 'Useful for complex plot structures that need explicit cause-and-effect.' },
+  },
+  explanation: {
+    role:             { weight: 15, impact: 'high',     why: 'Expert-teacher framing produces more accurate, pedagogically sound explanations.' },
+    task:             { weight: 22, impact: 'critical', why: 'A specific question beats a vague topic — "explain X to Y" yields better results.' },
+    context:          { weight: 15, impact: 'high',     why: "The learner's background determines vocabulary, analogies, and depth." },
+    examples:         { weight: 18, impact: 'critical', why: 'Concrete examples are the single most effective tool for understanding.' },
+    format:           { weight: 12, impact: 'high',     why: 'Structured explanations (steps, analogies, diagrams) are easier to follow.' },
+    chain_of_thought: { weight: 10, impact: 'high',     why: 'Step-by-step walkthrough mirrors how humans actually learn.' },
+    tone:             { weight: 5,  impact: 'medium',   why: 'Matching tone to audience (encouraging for beginners) improves engagement.' },
+    constraints:      { weight: 3,  impact: 'low',      why: 'Constraints (no jargon, max depth) keep explanations accessible.' },
+  },
+  business: {
+    role:             { weight: 18, impact: 'critical', why: 'A business role (CMO, analyst, consultant) aligns language and framing.' },
+    task:             { weight: 22, impact: 'critical', why: 'A precise deliverable (executive summary, pitch deck) sets the right form.' },
+    context:          { weight: 15, impact: 'high',     why: 'Company size, industry, and audience context prevents generic advice.' },
+    format:           { weight: 15, impact: 'high',     why: 'Business documents demand specific structures (BLUF, exec summary, bullets).' },
+    constraints:      { weight: 10, impact: 'high',     why: 'Word limits, tone guides, and compliance constraints prevent rework.' },
+    tone:             { weight: 10, impact: 'high',     why: 'Professional, confident tone is non-negotiable for business credibility.' },
+    examples:         { weight: 5,  impact: 'medium',   why: 'Benchmark examples calibrate quality and format expectations.' },
+    chain_of_thought: { weight: 5,  impact: 'medium',   why: 'Structured reasoning strengthens strategic recommendations.' },
+  },
+  search: {
+    task:             { weight: 28, impact: 'critical', why: 'The search query or research question is everything — be precise.' },
+    context:          { weight: 20, impact: 'critical', why: 'Specifying the domain, time range, and purpose sharpens relevance.' },
+    constraints:      { weight: 18, impact: 'high',     why: 'Filters (recency, source type, language) dramatically narrow result quality.' },
+    format:           { weight: 15, impact: 'high',     why: 'Structured results (ranked list, table, summary) make findings usable.' },
+    role:             { weight: 8,  impact: 'medium',   why: 'A researcher/analyst persona biases toward authoritative sources.' },
+    examples:         { weight: 8,  impact: 'medium',   why: 'Sample queries or example results calibrate what you are looking for.' },
+    input:            { weight: 3,  impact: 'low',      why: 'Providing existing knowledge prevents redundant results.' },
+  },
+  general: {
+    role:             { weight: 20, impact: 'critical', why: 'Setting a role frames expertise level and response style.' },
+    task:             { weight: 22, impact: 'critical', why: 'A specific task statement is the most important part of any prompt.' },
+    context:          { weight: 15, impact: 'high',     why: 'Context prevents the AI from making wrong assumptions about your situation.' },
+    constraints:      { weight: 12, impact: 'high',     why: 'Constraints scope the response and prevent off-topic content.' },
+    format:           { weight: 10, impact: 'high',     why: 'Output format guidance saves significant post-processing effort.' },
+    examples:         { weight: 8,  impact: 'medium',   why: 'Examples show rather than tell — they calibrate quality and style.' },
+    tone:             { weight: 5,  impact: 'medium',   why: 'Tone alignment improves usability and audience fit.' },
+    chain_of_thought: { weight: 5,  impact: 'medium',   why: 'Requesting step-by-step reasoning reduces errors on complex tasks.' },
+    input:            { weight: 3,  impact: 'low',      why: 'Including concrete input material grounds the response.' },
+  },
 };
 
-export function suggestNextType(existingTypes: Set<SegmentType>): SegmentType | null {
-  // Walk the natural chain; return first type not yet present
-  for (const [from, to] of Object.entries(NATURAL_NEXT) as [SegmentType, SegmentType][]) {
-    if (existingTypes.has(from) && !existingTypes.has(to)) return to;
-  }
-  // Fall back to core types
-  for (const t of CORE_TYPES) {
-    if (!existingTypes.has(t)) return t;
-  }
-  return null;
+const STAGE_LABELS: Record<CompletenessStage, string> = {
+  starter:    'Starter',
+  functional: 'Functional',
+  polished:   'Polished',
+  expert:     'Expert',
+};
+
+const STAGE_TIPS: Record<CompletenessStage, string> = {
+  starter:    'Start with Role + Task — they are the two highest-impact segments in any prompt.',
+  functional: 'Add Context and Constraints to cut down AI guesswork and hallucinations.',
+  polished:   'Boost quality with Examples — showing beats telling for consistent output.',
+  expert:     'Near-perfect! Consider Chain-of-Thought for complex reasoning or Refinement for iterative output.',
+};
+
+export function getCompletenessReport(
+  enabledTypes: Set<SegmentType>,
+  presentTypes: Set<SegmentType>,
+  category: string,
+): CompletenessReport {
+  const weights = CATEGORY_SEGMENT_WEIGHTS[category] ?? CATEGORY_SEGMENT_WEIGHTS.general;
+
+  const checklist: ChecklistItem[] = (Object.entries(weights) as [SegmentType, SegmentWeight][])
+    .map(([type, meta]) => ({
+      type,
+      state: enabledTypes.has(type) ? 'enabled'
+           : presentTypes.has(type) ? 'disabled'
+           : 'missing' as ChecklistItem['state'],
+      impact: meta.impact,
+      why: meta.why,
+      weight: meta.weight,
+    }))
+    .sort((a, b) => b.weight - a.weight);
+
+  const totalWeight = checklist.reduce((sum, item) => sum + item.weight, 0);
+  const earnedWeight = checklist
+    .filter((item) => item.state === 'enabled')
+    .reduce((sum, item) => sum + item.weight, 0);
+
+  const score = totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 0;
+
+  const stage: CompletenessStage =
+    score >= 80 ? 'expert'
+    : score >= 60 ? 'polished'
+    : score >= 30 ? 'functional'
+    : 'starter';
+
+  const nextSteps = checklist
+    .filter((item) => item.state !== 'enabled')
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3);
+
+  return {
+    score,
+    stage,
+    stageLabel: STAGE_LABELS[stage],
+    checklist,
+    nextSteps,
+    stageTip: STAGE_TIPS[stage],
+  };
 }
