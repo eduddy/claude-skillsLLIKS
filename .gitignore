@@ -1,2 +1,4 @@
 .DS_Store
+# generated artifact build directories (created by init-artifact.sh)
+prompt-manager/
 
