@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useMemo, type ReactNode } from 'react';
 import useSWR from 'swr';
 import type { Prompt, Category, AIService, AppSettings, UIState, AppState, AppAction, SortBy, ViewMode } from '@/types';
 
@@ -215,6 +215,11 @@ export function useApp() {
   return ctx;
 }
 
+export function usePrompt(id: string | null | undefined): import('@/types').Prompt | undefined {
+  const { state } = useApp();
+  return useMemo(() => (id ? state.prompts.find((p) => p.id === id) : undefined), [state.prompts, id]);
+}
+
 export function useCategory(id: string | null | undefined) {
   const { useCategory: fn } = useApp();
   return fn(id);
@@ -223,4 +228,33 @@ export function useCategory(id: string | null | undefined) {
 export function useService(id: string | null | undefined) {
   const { useService: fn } = useApp();
   return fn(id);
+}
+
+export function useFilteredPrompts(): import('@/types').Prompt[] {
+  const { state } = useApp();
+  const { prompts, settings, ui } = state;
+  return useMemo(() => {
+    let result = prompts;
+    if (ui.searchQuery) {
+      const q = ui.searchQuery.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.content.toLowerCase().includes(q) ||
+          (p.description?.toLowerCase().includes(q) ?? false) ||
+          p.tags.some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+    if (ui.selectedCategoryId) result = result.filter((p) => p.categoryId === ui.selectedCategoryId);
+    if (ui.selectedServiceId)  result = result.filter((p) => p.aiServiceId === ui.selectedServiceId);
+    if (ui.showFavoritesOnly)  result = result.filter((p) => p.isFavorite);
+    const copy = [...result];
+    switch (settings.sortBy) {
+      case 'newest': return copy.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case 'oldest': return copy.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      case 'name':   return copy.sort((a, b) => a.title.localeCompare(b.title));
+      case 'usage':  return copy.sort((a, b) => b.usageCount - a.usageCount);
+      default:       return copy;
+    }
+  }, [prompts, settings.sortBy, ui]);
 }
